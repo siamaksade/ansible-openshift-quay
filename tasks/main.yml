@@ -1,0 +1,72 @@
+---
+- name: verify user is cluster-admin
+  command: "oc auth can-i edit scc"
+  register: is_cluster_admin_result
+  failed_when: is_cluster_admin_result.stdout != 'yes'
+
+- name: check if quay project {{ project_name }} exists
+  shell: "{{ openshift_cli }} get project {{ project_name }}"
+  register: project_result
+  ignore_errors: true
+  changed_when: false
+
+- name: create quay project {{ project_name }}
+  shell: "{{ openshift_cli }} new-project {{ project_name }} --display-name='{{ project_display_name }}' --description='{{ project_desc }}'"
+  when: project_result is failed
+
+- name: assign user as project admin
+  shell: "{{ openshift_cli }} adm policy add-role-to-user admin {{ project_admin }} -n {{ project_name }}"
+  ignore_errors: true
+  when: 
+    - project_result is failed
+    - project_admin is defined
+    - project_admin is not none
+    - project_admin|trim() != ""
+
+- name: annotate quay project {{ project_name }}
+  shell: "{{ openshift_cli }} annotate --overwrite namespace {{ project_name }} {{ project_annotations }}"
+  ignore_errors: true
+  when:
+    - project_result is failed
+    - project_annotations is defined
+    - project_annotations is not none
+    - project_annotations|trim() != ""  
+
+# deploy postgresql
+- name: deploy postgresql persistent template
+  shell: |
+    {{ openshift_cli }} new-app postgresql-persistent -l app=quay -n {{ project_name }} \
+      --param=DATABASE_SERVICE_NAME=quay-postgresql \
+      --param=POSTGRESQL_USER=quay \
+      --param=POSTGRESQL_PASSWORD=quay \
+      --param=POSTGRESQL_DATABASE=quaydb 
+
+# deploy redis
+
+# TODO: check if redis template and is exist, if not create them
+# https://raw.githubusercontent.com/openshift/origin/master/examples/image-streams/image-streams-rhel7.json
+# oc create -f https://raw.githubusercontent.com/openshift/origin/master/examples/db-templates/redis-persistent-template.json -n openshift
+
+- name: deploy redis persistent template
+  shell: "{{ openshift_cli }} new-app redis-persistent --param=DATABASE_SERVICE_NAME=quay-redis --param=REDIS_PASSWORD=quay -l app=quay -n {{ project_name }}"
+
+# configure quay.io pull secret
+- name: create quay pull secret
+  shell: "{{ openshift_cli }} create secret docker-registry quay-pull-secret --docker-username={{ quayio_pull_username }} --docker-password={{ quayio_pull_password }} --docker-email=quay@openshift.com -n {{ project_name }}"
+  
+- name: allow quay to run as root
+  shell: "{{ openshift_cli }} adm policy add-scc-to-user anyuid -z default -n {{ project_name }}"
+
+- name: add pull secret to quay serviceaccount
+  shell: "{{ openshift_cli }} secrets link default quay-pull-secret --for=pull -n {{ project_name }}"
+
+# deploy quay
+- name: deploy quay template
+  shell: |
+    {{ openshift_cli }} process -f files/quay-template.yml -n {{ project_name }} \
+      --param=QUAY_VERSION={{ quay_version }} \
+      --param=QUAY_SERVICE_NAME={{ quay_service_name }} \\
+      | oc create -f - -n {{ project_name }}
+
+
+

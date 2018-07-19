@@ -1,0 +1,18 @@
+---
+dependencies: []
+allow_duplicates: true
+
+galaxy_info:
+  author: Siamak Sadeghianfar
+  description: Red Hat Quay for OpenShift
+  company: "Red Hat"
+  license: "license (BSD, MIT)"
+  min_ansible_version: 2.3
+  platforms:
+  - name: GenericLinux
+    versions:
+    - any
+  galaxy_tags:
+    - openshift
+    - quay
+    - registry
