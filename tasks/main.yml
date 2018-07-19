@@ -63,7 +63,7 @@
 # deploy quay
 - name: deploy quay template
   shell: |
-    {{ openshift_cli }} process -f files/quay-template.yml -n {{ project_name }} \
+    {{ openshift_cli }} process -f {{ role_path }}/files/quay-template.yml -n {{ project_name }} \
       --param=QUAY_VERSION={{ quay_version }} \
       --param=QUAY_SERVICE_NAME={{ quay_service_name }} \\
       | oc create -f - -n {{ project_name }}
