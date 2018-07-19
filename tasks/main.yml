@@ -42,13 +42,30 @@
       --param=POSTGRESQL_DATABASE=quaydb 
 
 # deploy redis
+- name: check if redis imagestream exists
+  shell: "{{ openshift_cli }} get is redis -n openshift"
+  register: redis_imagestream_result
+  ignore_errors: true
 
-# TODO: check if redis template and is exist, if not create them
-# https://raw.githubusercontent.com/openshift/origin/master/examples/image-streams/image-streams-rhel7.json
-# oc create -f https://raw.githubusercontent.com/openshift/origin/master/examples/db-templates/redis-persistent-template.json -n openshift
+- name: install centos redis imagestream 
+  shell: "{{ openshift_cli }} apply -f https://raw.githubusercontent.com/openshift/origin/master/examples/image-streams/image-streams-centos7.json -n openshift"
+  when: redis_imagestream_result is failed and not rhel_images|bool
 
-- name: deploy redis persistent template
-  shell: "{{ openshift_cli }} new-app redis-persistent --param=DATABASE_SERVICE_NAME=quay-redis --param=REDIS_PASSWORD=quay -l app=quay -n {{ project_name }}"
+- name: install rhel redis imagestream 
+  shell: "{{ openshift_cli }} apply -f https://raw.githubusercontent.com/openshift/origin/master/examples/image-streams/image-streams-rhel7.json -n openshift"
+  when: redis_imagestream_result is failed and rhel_images|bool
+
+- name: check if redis template exists
+  shell: "{{ openshift_cli }} get template redis-ephemeral -n openshift"
+  register: redis_template_result
+  ignore_errors: true
+
+- name: install redis template 
+  shell: "{{ openshift_cli }} create -f https://raw.githubusercontent.com/openshift/origin/master/examples/db-templates/redis-ephemeral-template.json -n openshift"
+  when: redis_template_result is failed
+
+- name: deploy redis
+  shell: "{{ openshift_cli }} new-app redis-ephemeral --param=DATABASE_SERVICE_NAME=quay-redis --param=REDIS_PASSWORD=quay -l app=quay -n {{ project_name }}"
 
 # configure quay.io pull secret
 - name: create quay pull secret
@@ -65,8 +82,8 @@
   shell: |
     {{ openshift_cli }} process -f {{ role_path }}/files/quay-template.yml -n {{ project_name }} \
       --param=QUAY_VERSION={{ quay_version }} \
-      --param=QUAY_SERVICE_NAME={{ quay_service_name }} \\
-      | oc create -f - -n {{ project_name }}
+      --param=QUAY_SERVICE_NAME={{ quay_service_name }} | \
+        oc create -f - -n {{ project_name }}
 
 
 

@@ -3,24 +3,6 @@ kind: Template
 metadata:
   name: quay-enterprise
 objects:
-- apiVersion: image.openshift.io/v1
-  kind: ImageStream
-  metadata:
-    name: ${QUAY_SERVICE_NAME}
-    labels:
-      app: ${QUAY_SERVICE_NAME}
-  spec:
-    lookupPolicy:
-      local: false
-    tags:
-      - annotations: null
-        from:
-          kind: DockerImage
-          name: 'quay.io/coreos/quay:${QUAY_VERSION}'
-        importPolicy: {}
-        name: ${QUAY_VERSION}
-        referencePolicy:
-          type: Source
 - apiVersion: v1
   kind: DeploymentConfig
   metadata:
@@ -50,7 +32,7 @@ objects:
           deploymentconfig: ${QUAY_SERVICE_NAME}
       spec:
         containers:
-        - image: ' '
+        - image: 'quay.io/coreos/quay:${QUAY_VERSION}'
           imagePullPolicy: IfNotPresent
           name: quay
           ports:
@@ -79,6 +61,8 @@ objects:
           - mountPath: /tmp
             name: tmp
         dnsPolicy: ClusterFirst
+        imagePullSecrets:
+          - name: quay-pull-secret
         restartPolicy: Always
         schedulerName: default-scheduler
         securityContext: {}

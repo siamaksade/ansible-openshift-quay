@@ -8,8 +8,8 @@ project_desc: Red Hat Quay Enterprise Image Registry
 # project_annotations:
 
 openshift_cli: oc
-openshift_admin_user:
-openshift_admin_pwd:
 
 quayio_pull_username: user
 quayio_pull_password: password
+
+rhel_images: false
