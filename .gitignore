@@ -1,2 +1,2 @@
-test/test-local.yml
-test/roles/
+tests/test-local.*
+tests/roles/
