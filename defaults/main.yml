@@ -1,15 +1,13 @@
 ---
 quay_version: v2.9.2
-quay_service_name: quay
 
 project_name: quay-enterprise
-project_display_name: Red Hat Quay
-project_desc: Red Hat Quay Enterprise Image Registry
 # project_annotations:
 
 openshift_cli: oc
 
-quayio_pull_username: user
-quayio_pull_password: password
+quayio_username:
+quayio_password:
+quayio_docker_json_path: 
 
 rhel_images: false

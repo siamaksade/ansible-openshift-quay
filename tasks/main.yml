@@ -11,7 +11,7 @@
   changed_when: false
 
 - name: create quay project {{ project_name }}
-  shell: "{{ openshift_cli }} new-project {{ project_name }} --display-name='{{ project_display_name }}' --description='{{ project_desc }}'"
+  shell: "{{ openshift_cli }} new-project {{ project_name }}"
   when: project_result is failed
 
 - name: assign user as project admin
@@ -35,11 +35,11 @@
 # deploy postgresql
 - name: deploy postgresql persistent template
   shell: |
-    {{ openshift_cli }} new-app postgresql-persistent -l app=quay -n {{ project_name }} \
-      --param=DATABASE_SERVICE_NAME=quay-postgresql \
-      --param=POSTGRESQL_USER=quay \
-      --param=POSTGRESQL_PASSWORD=quay \
-      --param=POSTGRESQL_DATABASE=quaydb 
+    {{ openshift_cli }} new-app mysql-persistent -l app=quay -n {{ project_name }} \
+      --param=DATABASE_SERVICE_NAME=quay-enterprise-mysql \
+      --param=MYSQL_USER=quay \
+      --param=MYSQL_PASSWORD=quay \
+      --param=MYSQL_DATABASE=quaydb 
 
 # deploy redis
 - name: check if redis imagestream exists
@@ -65,25 +65,42 @@
   when: redis_template_result is failed
 
 - name: deploy redis
-  shell: "{{ openshift_cli }} new-app redis-ephemeral --param=DATABASE_SERVICE_NAME=quay-redis --param=REDIS_PASSWORD=quay -l app=quay -n {{ project_name }}"
+  shell: "{{ openshift_cli }} new-app redis-ephemeral --param=DATABASE_SERVICE_NAME=quay-enterprise-redis --param=REDIS_PASSWORD=quay -l app=quay -n {{ project_name }}"
 
 # configure quay.io pull secret
-- name: create quay pull secret
-  shell: "{{ openshift_cli }} create secret docker-registry quay-pull-secret --docker-username={{ quayio_pull_username }} --docker-password={{ quayio_pull_password }} --docker-email=quay@openshift.com -n {{ project_name }}"
+- name: create quay pull secret from docker json
+  shell: "{{ openshift_cli }} create secret generic coreos-pull-secret --from-file='.dockerconfigjson={{ quayio_docker_json_path }}' --type='kubernetes.io/dockerconfigjson' -n {{ project_name }}"
+  when: 
+    - quayio_docker_json_path is defined
+    - quayio_docker_json_path is not none
+    - quayio_docker_json_path|trim() != ""
+
+- name: create quay pull secret from username and password
+  shell: "{{ openshift_cli }} create secret docker-registry coreos-pull-secret --docker-username={{ quayio_username }} --docker-password='{{ quayio_password }}' --docker-email=quay@openshift.com -n {{ project_name }}"
+  when: 
+    - quayio_username is defined
+    - quayio_username is not none
+    - quayio_username|trim() != ""
   
 - name: allow quay to run as root
   shell: "{{ openshift_cli }} adm policy add-scc-to-user anyuid -z default -n {{ project_name }}"
 
-- name: add pull secret to quay serviceaccount
-  shell: "{{ openshift_cli }} secrets link default quay-pull-secret --for=pull -n {{ project_name }}"
-
 # deploy quay
-- name: deploy quay template
+
+- template:
+    src: quay-enterprise-app-deployment.yml.j2
+    dest: /tmp/quay-enterprise-app-deployment.yml
+    force: yes
+
+- name: deploy quay
   shell: |
-    {{ openshift_cli }} process -f {{ role_path }}/files/quay-template.yml -n {{ project_name }} \
-      --param=QUAY_VERSION={{ quay_version }} \
-      --param=QUAY_SERVICE_NAME={{ quay_service_name }} | \
-        oc create -f - -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ role_path }}/files/quay-servicetoken-role.yaml -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ role_path }}/files//quay-servicetoken-role-binding.yaml -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ role_path }}/files/quay-enterprise-config-secret.yml -n {{ project_name }}
+    {{ openshift_cli }} create -f /tmp/quay-enterprise-app-deployment.yml -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ role_path }}/files/quay-enterprise-service.yml -n {{ project_name }}
+    {{ openshift_cli }} set resources dc/quay-enterprise-app --limits=cpu=2,memory=4Gi --requests=cpu=500m,memory=1Gi -n {{ project_name }}
+    {{ openshift_cli }} expose svc/quay-enterprise -n {{ project_name }}
 
 
 

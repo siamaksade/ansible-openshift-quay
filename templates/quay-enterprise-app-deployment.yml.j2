@@ -1,0 +1,35 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: quay-enterprise-app
+  labels:
+    quay-enterprise-component: app
+    app: quay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      quay-enterprise-component: app
+      app: quay
+  template:
+    metadata:
+      namespace: quay-enterprise
+      labels:
+        quay-enterprise-component: app
+        app: quay
+    spec:
+      volumes:
+        - name: configvolume
+          secret:
+            secretName: quay-enterprise-config-secret
+      containers:
+      - name: quay-enterprise-app
+        image: quay.io/coreos/quay:{{ quay_version }}
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: configvolume
+          readOnly: false
+          mountPath: /conf/stack
+      imagePullSecrets:
+        - name: coreos-pull-secret
