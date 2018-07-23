@@ -8,12 +8,10 @@ Role Variables
 
 | Variable                    | Default Value      | Required |  Description   |
 |-----------------------------|--------------------|----------|----------------|
+|`quay_version`               | `v2.9.2`           | Optional | Quay image version |
 |`quayio_username`            | -                  | Required | Quay.io username for pulling Quay image from quay.io/coreos/quay |
 |`quayio_password`            | -                  | Required | Quay.io password for pulling Quay image from quay.io/coreos/quay |
 |`quayio_docker_json_path`    | -                  | Optional | Docker authentication json (instead of `quayio_username` and `quayio_password` ) for pulling Quay image from quay.io/coreos/quay |
-|`quay_version`               | `v2.9.2`           | Optional | Quay image version |
-|`project_annotations`        | -                  | Optional | OpenShift project annotations for the Quay container |
-|`project_admin`              | -                  | Optional | If set, the user to be assigned as project admin |
 |`openshift_cli`              | `oc`               | Optional | OpenShift CLI command and arguments (e.g. auth) | 
 
 
@@ -27,6 +25,6 @@ tasks:
 - import_role:
     name: siamaksade.openshift_quay
   vars:
-    quayio_pull_username: user
-    quayio_pull_password: password
+    quayio_username: user
+    quayio_password: password
 ```
