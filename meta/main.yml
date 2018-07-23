@@ -4,7 +4,8 @@ allow_duplicates: true
 
 galaxy_info:
   author: Siamak Sadeghianfar
-  description: Red Hat Quay for OpenShift
+  description: Red Hat Quay Registry on OpenShift
+  role_name: openshift_quay
   company: "Red Hat"
   license: "license (BSD, MIT)"
   min_ansible_version: 2.3
