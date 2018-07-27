@@ -1,0 +1,46 @@
+---
+- name: extract quay hostname
+  shell: "{{ openshift_cli }} get route registry -o jsonpath='{.spec.host}' -n {{ project_name }}"
+  register: quay_hostname_result
+
+- set_fact:
+    quay_hostname: "{{ quay_hostname_result.stdout }}"
+
+- name: get setup page
+  uri:
+    url: http://{{ quay_hostname }}/setup/
+    validate_certs: no
+    method: GET
+    return_content: yes
+    body_format: raw
+    dest: "{{ tmp_dir.path }}/setup.html"
+  register: quay_setup_response
+  until: quay_setup_response.status == 200
+  retries: 30
+  delay: 10
+    
+- name: extract token
+  shell: cat {{ tmp_dir.path }}/setup.html | grep "__token" | awk -F\' '{print $(NF-1)}'
+  register: quay_token
+
+- name: create superuser
+  uri:
+    url:  http://{{ quay_hostname }}/api/v1/superuser/users/?_csrf_token={{ quay_token.stdout | urlencode }}
+    validate_certs: no
+    method: POST
+    body_format: json
+    body:
+      username: "{{ quay_admin_username }}"
+      email: "{{ quay_admin_email }}"
+      password: "{{ quay_admin_password }}"
+    headers:
+      Cookie: "{{ quay_setup_response.set_cookie }}"
+
+- template:
+    src: config.yml.j2
+    dest: "{{ tmp_dir.path }}/config.yaml"
+    force: yes
+
+- name: create quay config
+  shell: "{{ openshift_cli }} create secret generic quay-enterprise-config-secret --from-file=config.yaml={{ tmp_dir.path }}/config.yaml --dry-run -o yaml -n {{ project_name }} | {{ openshift_cli }} replace -f - -n {{ project_name }}"
+

@@ -1,0 +1,110 @@
+---
+- name: verify user is cluster-admin
+  command: "oc auth can-i edit scc"
+  register: is_cluster_admin_result
+  failed_when: is_cluster_admin_result.stdout != 'yes'
+
+- name: check if quay project {{ project_name }} exists
+  shell: "{{ openshift_cli }} get project {{ project_name }}"
+  register: project_result
+  ignore_errors: true
+  changed_when: false
+
+- name: create quay project {{ project_name }}
+  shell: "{{ openshift_cli }} new-project {{ project_name }}"
+  when: project_result is failed
+
+- name: assign user as project admin
+  shell: "{{ openshift_cli }} adm policy add-role-to-user admin {{ project_admin }} -n {{ project_name }}"
+  ignore_errors: true
+  when: 
+    - project_result is failed
+    - project_admin is defined
+    - project_admin is not none
+    - project_admin|trim() != ""
+
+- name: annotate quay project {{ project_name }}
+  shell: "{{ openshift_cli }} annotate --overwrite namespace {{ project_name }} {{ project_annotations }}"
+  ignore_errors: true
+  when:
+    - project_result is failed
+    - project_annotations is defined
+    - project_annotations is not none
+    - project_annotations|trim() != ""  
+
+# deploy postgresql
+- name: deploy postgresql persistent template
+  shell: |
+    {{ openshift_cli }} new-app mysql-persistent -l app=quay -n {{ project_name }} \
+      --param=DATABASE_SERVICE_NAME=quay-enterprise-mysql \
+      --param=MYSQL_USER={{ db_username }} \
+      --param=MYSQL_PASSWORD={{ db_password }} \
+      --param=MYSQL_DATABASE={{ db_name }} 
+
+# deploy redis
+- name: check if redis imagestream exists
+  shell: "{{ openshift_cli }} get is redis -n openshift"
+  register: redis_imagestream_result
+  ignore_errors: true
+
+- name: install centos redis imagestream 
+  shell: "{{ openshift_cli }} apply -f https://raw.githubusercontent.com/openshift/origin/master/examples/image-streams/image-streams-centos7.json -n openshift"
+  when: redis_imagestream_result is failed and not rhel_images|bool
+
+- name: install rhel redis imagestream 
+  shell: "{{ openshift_cli }} apply -f https://raw.githubusercontent.com/openshift/origin/master/examples/image-streams/image-streams-rhel7.json -n openshift"
+  when: redis_imagestream_result is failed and rhel_images|bool
+
+- name: check if redis template exists
+  shell: "{{ openshift_cli }} get template redis-ephemeral -n openshift"
+  register: redis_template_result
+  ignore_errors: true
+
+- name: install redis template 
+  shell: "{{ openshift_cli }} create -f https://raw.githubusercontent.com/openshift/origin/master/examples/db-templates/redis-ephemeral-template.json -n openshift"
+  when: redis_template_result is failed
+
+- name: deploy redis
+  shell: "{{ openshift_cli }} new-app redis-ephemeral --param=DATABASE_SERVICE_NAME=quay-enterprise-redis --param=REDIS_PASSWORD={{ redis_password }} -l app=quay -n {{ project_name }}"
+
+# configure quay.io pull secret
+- name: create quay pull secret from docker json
+  shell: "{{ openshift_cli }} create secret generic coreos-pull-secret --from-file='.dockerconfigjson={{ quayio_docker_json_path }}' --type='kubernetes.io/dockerconfigjson' -n {{ project_name }}"
+  when: 
+    - quayio_docker_json_path is defined
+    - quayio_docker_json_path is not none
+    - quayio_docker_json_path|trim() != ""
+
+- name: create quay pull secret from username and password
+  shell: "{{ openshift_cli }} create secret docker-registry coreos-pull-secret --docker-username={{ quayio_username }} --docker-password='{{ quayio_password }}' --docker-email=quay@openshift.com -n {{ project_name }}"
+  when: 
+    - quayio_username is defined
+    - quayio_username is not none
+    - quayio_username|trim() != ""
+  
+- name: allow quay to run as root
+  shell: "{{ openshift_cli }} adm policy add-scc-to-user anyuid -z default -n {{ project_name }}"
+
+# deploy quay
+- name: create temporary directory
+  tempfile:
+    state: directory
+    suffix: quay
+  register: tmp_dir
+
+- template:
+    src: quay-enterprise-app-deployment.yml.j2
+    dest: "{{ tmp_dir.path }}/quay-enterprise-app-deployment.yml"
+
+- name: deploy quay
+  shell: |
+    {{ openshift_cli }} create -f {{ role_path }}/files/quay-servicetoken-role.yaml -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ role_path }}/files//quay-servicetoken-role-binding.yaml -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ role_path }}/files/quay-enterprise-config-secret.yml -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ tmp_dir.path }}/quay-enterprise-app-deployment.yml -n {{ project_name }}
+    {{ openshift_cli }} create -f {{ role_path }}/files/quay-enterprise-service.yml -n {{ project_name }}
+    {{ openshift_cli }} set resources deployment/quay-enterprise-app --limits=cpu=2,memory=4Gi --requests=cpu=500m,memory=1Gi -n {{ project_name }}
+    {{ openshift_cli }} expose svc/quay-enterprise --name=registry -n {{ project_name }}
+
+
+

@@ -1,6 +1,10 @@
 ---
 quay_version: v2.9.2
 
+quay_admin_username: admin
+quay_admin_password: admin 
+quay_admin_email: amdin@quay.com
+
 project_name: quay-enterprise
 # project_annotations:
 
@@ -11,3 +15,8 @@ quayio_password:
 quayio_docker_json_path: 
 
 rhel_images: false
+
+redis_password: "quay"
+db_username: "quay"
+db_password: "quay"
+db_name: quaydb
